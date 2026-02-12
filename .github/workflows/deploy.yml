@@ -73,7 +73,7 @@ jobs:
             cd ~/deployment/prod
             
             # Docker 컨테이너 실행에 필요한 정보 주입
-            echo "DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}" > ./docker/.env
+            echo "DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}" > .env
             
             chmod +x deploy.sh
             ./deploy.sh
