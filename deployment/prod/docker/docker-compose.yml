@@ -3,7 +3,7 @@ version: "3.8"
 
 # 우리가 띄울 컨테이너들 정의
 services:
-  # Blue 환경 (8083 포트)
+  # Blue 환경 (8081 포트)
   blue:
     # 도커 허브에서 가져올 이미지 주소 (프론트엔드 이미지)
     image: ${DOCKERHUB_USERNAME}/bam-match-fe:latest
@@ -14,7 +14,7 @@ services:
     environment:
       - TZ=Asia/Seoul               # 서버 시간을 한국 시간으로 맞춥니다.
     ports:
-      - "8081:80"                   # 외부(8083)와 내부(Nginx 80)를 연결합니다.
+      - "8081:80"                   # 외부(8081)와 내부(Nginx 80)를 연결합니다.
     env_file:
       - ../.env                     # DOCKERHUB_USERNAME 등이 담긴 .env 참조
     networks:

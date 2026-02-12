@@ -4,34 +4,29 @@
 BASE_DIR="$HOME/deployment/prod"
 NGINX_CONF_DIR="$BASE_DIR/nginx"
 COMPOSE_FILE="$BASE_DIR/docker/docker-compose.yml"
-APP_NAME="bam-match-fe" # 프론트엔드 앱 이름으로 변경
+APP_NAME="bam-match-fe"
 
-# 도커 컴포즈 명령어 정의
 if docker compose version > /dev/null 2>&1; then
     DOCKER_COMPOSE="docker compose"
 else
     DOCKER_COMPOSE="docker-compose"
 fi
 
-# 현재 실행 중인 컨테이너 확인 (docker-compose.yml에 정의한 컨테이너 이름 기준)
 IS_BLUE=$($DOCKER_COMPOSE -f "$COMPOSE_FILE" ps | grep "${APP_NAME}-blue" | grep "Up")
 
 if [ -z "$IS_BLUE" ]; then
   echo "### 프론트엔드 배포 시작: GREEN => BLUE (8081) ###"
-
   echo "1. Blue 이미지 가져오기"
   $DOCKER_COMPOSE -f "$COMPOSE_FILE" pull blue
-
   echo "2. Blue 컨테이너 실행"
   $DOCKER_COMPOSE -f "$COMPOSE_FILE" up -d blue
 
-  # 헬스체크 (React는 별도의 health 엔드포인트가 없으므로 index.html 응답 여부 확인)
+  # Blue 헬스체크 (8081 포트)
   for i in {1..20}; do
     echo "3. Blue 헬스체크 중... ($i/20)"
     sleep 5
-    # 컨테이너 내부의 Nginx가 정상적으로 html 파일을 응답하는지 확인
-    REQUEST=$(curl -s http://127.0.0.1:8081 | grep "html" || true)
-    if [ -n "$REQUEST" ]; then
+    STATUS=$(curl -o /dev/null -s -w "%{http_code}" http://127.0.0.1:8081)
+    if [ "$STATUS" -eq 200 ]; then
       echo "✅ 헬스체크 성공!"
       break
     fi
@@ -42,27 +37,25 @@ if [ -z "$IS_BLUE" ]; then
   done
 
   echo "4. Nginx 설정 교체 및 Reload"
-  # 아까 만든 bam-match-fe-blue.conf를 적용
   sudo cp "$NGINX_CONF_DIR/${APP_NAME}-blue.conf" /etc/nginx/conf.d/default.conf
   sudo nginx -s reload
-
   echo "5. 이전 컨테이너(Green) 종료"
   $DOCKER_COMPOSE -f "$COMPOSE_FILE" stop green || true
 
 else
   echo "### 프론트엔드 배포 시작: BLUE => GREEN (8082) ###"
-
   echo "1. Green 이미지 가져오기"
   $DOCKER_COMPOSE -f "$COMPOSE_FILE" pull green
-
   echo "2. Green 컨테이너 실행"
   $DOCKER_COMPOSE -f "$COMPOSE_FILE" up -d green
 
+  # Green 헬스체크 (8082 포트 - 수정됨!)
   for i in {1..20}; do
     echo "3. Green 헬스체크 중... ($i/20)"
     sleep 5
-    REQUEST=$(curl -s http://127.0.0.1:8082 | grep "html" || true)
-    if [ -n "$REQUEST" ]; then
+    # 포트를 8082로 정확히 명시해야 합니다.
+    STATUS=$(curl -o /dev/null -s -w "%{http_code}" http://127.0.0.1:8082)
+    if [ "$STATUS" -eq 200 ]; then
       echo "✅ 헬스체크 성공!"
       break
     fi
@@ -73,10 +66,8 @@ else
   done
 
   echo "4. Nginx 설정 교체 및 Reload"
-  # 아까 만든 bam-match-fe-green.conf를 적용
   sudo cp "$NGINX_CONF_DIR/${APP_NAME}-green.conf" /etc/nginx/conf.d/default.conf
   sudo nginx -s reload
-
   echo "5. 이전 컨테이너(Blue) 종료"
   $DOCKER_COMPOSE -f "$COMPOSE_FILE" stop blue || true
 fi
