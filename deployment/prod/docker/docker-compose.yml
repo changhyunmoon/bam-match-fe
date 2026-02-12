@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# 1. 현재 어떤 색상이 실행 중인지 확인
+EXIST_BLUE=$(docker ps -q -f name=blue)
+
+if [ -z "$EXIST_BLUE" ]; then
+    TARGET_COLOR="blue"
+    TARGET_PORT=8080
+    BEFORE_COLOR="green"
+else
+    TARGET_COLOR="green"
+    TARGET_PORT=8081
+    BEFORE_COLOR="blue"
+fi
+
+echo "> $TARGET_COLOR 배포 시작 (Port: $TARGET_PORT)"
+
+# 2. 새로운 컨테이너 실행 (docker-compose 이용)
+# .env 파일이 같은 폴더에 있어야 ${DOCKERHUB_USERNAME}을 인식합니다.
+docker-compose -f docker/docker-compose.yml up -d $TARGET_COLOR
+
+# 3. 헬스 체크
+echo "> Health Check 시작..."
+for retry in {1..10}
+do
+    sleep 3
+    if [ $(curl -s http://localhost:$TARGET_PORT | grep -c "html") -ge 1 ]; then
+        echo "> Health Check 성공!"
+        break
+    fi
+done
+
+# 4. Nginx 리로드 (포트 변경)
+# EC2 본체의 Nginx 설정을 현재 타겟 포트로 수정
+sudo sed -i "s/127.0.0.1:[0-9]*/127.0.0.1:$TARGET_PORT/g" /etc/nginx/sites-available/default
+sudo systemctl reload nginx
+
+# 5. 이전 버전 종료
+echo "> 이전 컨테이너($BEFORE_COLOR) 종료..."
+docker stop $BEFORE_COLOR || true
+docker rm $BEFORE_COLOR || true

@@ -1,0 +1,79 @@
+name: BAM-MATCH Frontend Blue-Green CD
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  # 1. 빌드 단계 (React Build & Docker Push)
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # 또는 사용 중인 노드 버전
+          cache: 'npm'
+
+      # 프론트엔드 환경 변수 설정 (.env 파일 생성)
+      # REACT_APP_API_URL 등을 Secrets에 넣어두셨다면 여기서 주입합니다.
+      - name: Create .env file
+        run: |
+          echo "REACT_APP_API_URL=${{ secrets.REACT_APP_API_URL }}" >> .env
+          # 추가적인 환경변수가 있다면 여기에 줄줄이 추가 가능
+
+      - name: Install dependencies and Build
+        run: |
+          npm install
+          npm run build
+
+      # Docker Hub 로그인 및 이미지 푸시
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        run: |
+          # 이미지 이름을 bam-match-fe로 설정
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/bam-match-fe:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/bam-match-fe:latest
+
+  # 2. 배포 단계 (EC2 전송 및 배포 스크립트 실행)
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # EC2로 배포 관련 스크립트 전송 (프로젝트 루트에 deployment/prod 폴더가 있다고 가정)
+      - name: Copy deployment files to EC2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.FE_EC2_HOST }}      # 프론트용 EC2 IP (Secrets에 등록 확인)
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "deployment/prod/**"
+          target: "~/deployment/prod"
+          strip_components: 2
+          overwrite: true
+
+      # EC2 접속 및 배포 스크립트 실행
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.FE_EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            mkdir -p ~/deployment/prod
+            cd ~/deployment/prod
+            
+            # Docker 컨테이너 실행에 필요한 정보 주입
+            echo "DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}" > ./docker/.env
+            
+            chmod +x deploy.sh
+            ./deploy.sh
