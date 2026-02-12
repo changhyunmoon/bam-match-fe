@@ -1,8 +1,8 @@
-# 1단계: Build stage (React 소스를 빌드하여 정적 파일 생성)
+# 1단계: Build stage (React 빌드)
 FROM node:18-alpine AS build
 WORKDIR /app
 
-# 의존성 설치 (캐시 활용을 위해 package.json 먼저 복사)
+# 캐시 효율을 위해 의존성 파일부터 복사
 COPY package*.json ./
 RUN npm install
 
@@ -10,15 +10,17 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-# 2단계: Production stage (빌드된 파일을 Nginx로 서빙)
+# 2단계: Production stage (Nginx 서빙)
 FROM nginx:stable-alpine
 
-# 컨테이너 내부의 Nginx 기본 설정 삭제 후 우리 설정 파일 복사
-# (nginx.conf 파일은 나중에 만들 예정입니다)
+# 컨테이너 내부의 기본 Nginx 설정 삭제
 RUN rm /etc/nginx/conf.d/default.conf
+
+# SPA 라우팅을 지원하는 Nginx 설정을 컨테이너 내부로 복사
+# (프로젝트 루트에 있는 nginx.conf를 사용합니다)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# 1단계에서 빌드된 결과물(build 폴더)만 Nginx 실행 경로로 복사
+# 1단계 빌드 결과물을 Nginx 정적 파일 경로로 복사
 COPY --from=build /app/build /usr/share/nginx/html
 
 # 80포트 노출 및 Nginx 실행
